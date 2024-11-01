@@ -18,11 +18,15 @@ public class Index {
     }
 
     private static String _toStringOfMap(Map<?, ?> map) {
-        var res = new StringBuilder();
-        res.append(map);
+        final var res = new StringBuilder();
+        res.append("{\n");
+        map.forEach((k, v) -> {
+            res.append("    ").append(k).append(" = ").append(v).append(",\n");
+        });
+        res.append("}");
         return res.toString();
     }
-    
+
 
     public static String toString(Object obj) {
         var cls = obj.getClass();
@@ -89,6 +93,12 @@ public class Index {
 
         System.out.println(toString(new ArrayList<>(List.of(1, 2))));
         System.out.println(toString(mapPutAll(new HashMap<>(), List.of(1, 2, 3), List.of(11, 22, 33))));
+
+        try {
+            var list = Class.forName("java.util.ArrayList");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
     }
 }
 
