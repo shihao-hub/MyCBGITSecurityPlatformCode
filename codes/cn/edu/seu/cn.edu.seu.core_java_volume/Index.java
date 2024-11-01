@@ -1,5 +1,6 @@
 package cn.edu.seu.core_java_volume;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
 
 public class Index {
@@ -96,7 +97,12 @@ public class Index {
 
         try {
             var list = Class.forName("java.util.ArrayList");
-        } catch (ClassNotFoundException e) {
+            System.out.println(list.getConstructor().newInstance());
+        } catch (ClassNotFoundException
+                 | InstantiationException
+                 | IllegalAccessException
+                 | InvocationTargetException
+                 | NoSuchMethodException e) {
             throw new RuntimeException(e);
         }
     }
