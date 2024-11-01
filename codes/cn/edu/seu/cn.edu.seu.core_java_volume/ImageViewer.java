@@ -5,11 +5,15 @@ import java.io.*;
 import javax.swing.*;
 
 public class ImageViewer {
+    public static final int START_X = 600;
+    public static final int START_Y = 300;
+
     public static void main(String[] args) {
         EventQueue.invokeLater(() -> {
             var frame = new ImageViewerFrame();
 
             frame.setTitle("ImageViewer");
+            frame.setBounds(START_X, START_Y, ImageViewerFrame.DEFAULT_WIDTH, ImageViewerFrame.DEFAULT_HEIGHT);
             frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setVisible(true);
         });
@@ -17,8 +21,8 @@ public class ImageViewer {
 }
 
 class ImageViewerFrame extends JFrame {
-    private static final int DEFAULT_WIDTH = 300;
-    private static final int DEFAULT_HEIGHT = 400;
+    public static final int DEFAULT_WIDTH = 300;
+    public static final int DEFAULT_HEIGHT = 400;
 
     public static String getPathOfJFileChooser(JFileChooser chooser) {
         return chooser.getSelectedFile().getPath();
@@ -28,12 +32,16 @@ class ImageViewerFrame extends JFrame {
         setSize(DEFAULT_WIDTH, DEFAULT_HEIGHT);
 
         // 用 label 展示图片
-        var label = new JLabel();
-        add(label);
+        var imageLabel = new JLabel();
+        add(imageLabel);
+
+//        var textLabel = new JLabel();
+//        add(textLabel);
+//        textLabel.setText("\u2122\u2122\u2122\u2122");
 
         // 文件选择器
         var chooser = new JFileChooser();
-        chooser.setCurrentDirectory(new File("."));
+        chooser.setCurrentDirectory(new File("./src/main/resources"));
 
         // 菜单栏
         var menuBar = new JMenuBar();
@@ -48,7 +56,10 @@ class ImageViewerFrame extends JFrame {
             int res = chooser.showOpenDialog(null);
             if (res == JFileChooser.APPROVE_OPTION) {
                 String name = getPathOfJFileChooser(chooser);
-                label.setIcon(new ImageIcon(name));
+                var image = new ImageIcon(name);
+                imageLabel.setIcon(image);
+                int offsetX = 10, offsetY = 30;
+                setSize(image.getIconWidth() + offsetX, image.getIconHeight() + offsetY);
             }
         });
 
