@@ -3,7 +3,7 @@ package cn.edu.seu.core_java_volume;
 import java.util.*;
 
 public class Index {
-    private static String _toStringOfList(List<?> list) {
+    private static String _toString(List<?> list) {
         var res = new StringBuilder();
         res.append("[");
         for (Object o : list) {
@@ -17,7 +17,7 @@ public class Index {
         return res.toString();
     }
 
-    private static String _toStringOfMap(Map<?, ?> map) {
+    private static String _toString(Map<?, ?> map) {
         final var res = new StringBuilder();
         res.append("{\n");
         map.forEach((k, v) -> {
@@ -31,9 +31,9 @@ public class Index {
     public static String toString(Object obj) {
         var cls = obj.getClass();
         if (Arrays.stream(cls.getInterfaces()).anyMatch(v -> v == List.class)) {
-            return _toStringOfList((List<?>) obj);
+            return _toString((List<?>) obj);
         } else if (Arrays.stream(cls.getInterfaces()).anyMatch(v -> v == Map.class)) {
-            return _toStringOfMap((Map<?, ?>) obj);
+            return _toString((Map<?, ?>) obj);
         }
         return obj.toString();
     }
