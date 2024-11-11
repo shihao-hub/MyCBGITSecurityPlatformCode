@@ -14,34 +14,30 @@ class CryptoHelper:
 
     @staticmethod
     def add_to_16(value):
-        # (Q)!: 2024-11-11，这个的作用是啥？
-        # str 不是 16 的倍数那就补足为 16 的倍数
+        """ str 不是 16 的倍数那就补足为 16 的倍数 """
         while len(value) % 16 != 0:
             value += '\0'
-        return str.encode(value)  # 返回bytes
+        return str.encode(value)
 
-    def __init__(self, key: Optional[str] = None):
-        # 密钥
-        self._key = key if key else settings.SECRET_KEY[:CryptoHelper.MAX_AES_KEY_LENGTH]
+    def __init__(self, cipher_key: Optional[str] = None, encoding="utf-8"):
+        self._cipher_key = cipher_key if cipher_key else settings.SECRET_KEY[:type(self).MAX_AES_KEY_LENGTH]
+        self._encoding = encoding
+
+        # 初始化加密器
+        self._aes = AES.new(type(self).add_to_16(self._cipher_key), AES.MODE_ECB)
 
     def encrypt(self, text: str):
         """ 生成密文 """
-        # 初始化加密器
-        aes = AES.new(self.add_to_16(self._key), AES.MODE_ECB)
-        # 进行 aes 加密
-        encrypt_aes = aes.encrypt(self.add_to_16(text))
-        # 用 base64 转成字符串形式
-        encrypted_text = str(base64.encodebytes(encrypt_aes), encoding="utf-8")
-        # 加密后的字符串会被添加换行符...
-        encrypted_text = encrypted_text.strip()
-        return encrypted_text
+        encrypted_text_by_aes: bytes = self._aes.encrypt(type(self).add_to_16(text))
+        encode_by_base64: bytes = base64.encodebytes(encrypted_text_by_aes)
+
+        res: str = encode_by_base64.decode(encoding=self._encoding).strip()
+        return res
 
     def decrypt(self, ciphertext: str):
         """ 解开密文 """
-        # 初始化加密器
-        aes = AES.new(self.add_to_16(self._key), AES.MODE_ECB)
-        # 逆向解密 base64 成 bytes
-        base64_decrypted = base64.decodebytes(ciphertext.encode(encoding="utf-8"))
-        # 执行解密密并转码返回 str
-        decrypted_text = str(aes.decrypt(base64_decrypted), encoding="utf-8")
-        return decrypted_text
+        decode_by_base64: bytes = base64.decodebytes(ciphertext.encode(encoding=self._encoding))
+        decrypted_text_by_aes: bytes = self._aes.decrypt(decode_by_base64)
+
+        res: str = decrypted_text_by_aes.decode(encoding="utf-8")
+        return res
