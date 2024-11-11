@@ -16,6 +16,8 @@ from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.datavalidation import DataValidation
 
+from django.conf import settings
+
 import measure.constants as constant
 from measure.models import MissTaskImprove, NewMissTaskDetail
 from utils.import_export import ExcelExport
@@ -69,6 +71,9 @@ class ExcelExporter(Generic[T]):
 
     def _set_header(self):
         """ 设置表头 """
+        raise NotImplementedError
+
+    def _get_field_value_and_style_list(self, task):
         raise NotImplementedError
 
     def _set_body(self):
@@ -126,6 +131,108 @@ class ExcelExporter(Generic[T]):
         self._set_body()
         self._set_footer()
         return self._get_workbook_bytes_io()
+
+
+# -------------------------------------------------------------------------------------------------------------------- #
+class ExportImprovementsUnderSameTaskSio(ExcelExporter):
+    def __init__(self, data, **kwargs):
+        super().__init__(data, **kwargs)
+
+        # 2024-10-14：第一次使用我当初重构时搞出来的类，抽象程度太低，存在重复代码，不好用！！
+        #            这抽象出来的几个类和函数没多少区别！！！太差了！！！哎...
+
+        self.first_row_header_styles = {
+            "font": ExcelExport.header_font,
+            "alignment": ExcelExport.alignment_4,
+            "fill": ExcelExport.fill_6,  # 黄色的标头填充色
+        }
+
+        _first_row_cn_en_mapping = {
+            "问题单号": "dts_no",
+            "改进措施责任人": "reform_executor",
+            "改进类型": "improvement_type",
+            "改进措施": "improvement",
+            "闭环附件": "attachment_id__id",  # 见 __get_misstaskimprove_res 函数，可以知道原因
+            "闭环进展": "close_progress",
+            "闭环计划": "close_plan_time",
+            "闭环状态": "close_status",
+            "是否超期": "is_timeout",
+            "更新时间": "update_time",
+        }
+
+        self.first_row_header = list(_first_row_cn_en_mapping.keys())
+
+        self.body_start_row = 2
+        self.body_row_height = 40
+
+        self.col_num_list = [len(str(x).encode("gb18030")) for x in self.first_row_header]
+
+        if settings.DEBUG:
+            self.domain = "https://secevaluation-sit.cbgit.huawei.com/"
+        else:
+            self.domain = "https://secplatform.cbgit.huawei.com/"
+
+    def _get_field_value_and_style_list(self, task):
+
+        is_timeout = (MissTaskImprove.objects
+                      .filter(dts_no=task.dts_no, YN_delete=0)
+                      .annotate(**MissTaskImprove.get_condition_of_is_timeout())
+                      .values_list("is_timeout", flat=True)
+                      .first())
+        field_value_and_style_list = (
+            task.dts_no[0],  # ["WARN", "WARN", ]
+            task.reform_executor,
+            task.improvement_type,
+            task.improvement,
+            (f"{task.file_name}", dict(
+                link=f"{self.domain}{task.file_id}?attname={task.file_name}",
+                font=ExcelExport.hyperlink_font
+            ))
+            if task.attachment_id__id
+            else "",
+            task.close_progress,
+            task.close_plan_time,
+            task.close_status,
+            "是" if is_timeout else "否",
+            task.update_time,
+        )
+        return field_value_and_style_list
+
+    def _set_header(self):
+        """ 设置表头 """
+
+        for index, value in enumerate(self.first_row_header):
+            row, column = 1, index + 1
+            ExcelExport.set_value_style(cell=self._sheet.cell(row, column), value=value,
+                                        **self.first_row_header_styles)
+
+    def _set_body(self):
+        """ 设置正文 """
+        row_delta = 0
+        for task in self._data:
+            row = self.body_start_row + row_delta
+            row_delta += 1
+
+            self._sheet.row_dimensions[row].height = self.body_row_height  # 设置行高
+
+            field_value_and_style_list = self._get_field_value_and_style_list(task)
+            self._set_table_row(field_value_and_style_list, row, self.col_num_list)
+
+    def _set_footer(self):
+        """ 设置其他，此处是类比 enter、do、exit 中的 exit """
+        # 设置自适应列宽
+        for i, v in enumerate(self.col_num_list):
+            width = min(v, 80)
+            self._sheet.column_dimensions[self.col_num_dict.get(i)].width = width + 5
+
+
+def export_improvements_under_same_task_sio(tasks):
+    exporter = ExportImprovementsUnderSameTaskSio(tasks, sheet_styles={
+        "font": ExcelExport.font,
+        "border": ExcelExport.border,
+        "alignment": ExcelExport.alignment_2,
+    })
+    return exporter.execute()
 
 
 # -------------------------------------------------------------------------------------------------------------------- #
@@ -263,6 +370,8 @@ class SjExportMissTaskSio(SjXwExportMissTaskSio):
             dts_no_and_styles = (task.dts_no, dict())
         improvement_fields = self._get_sj_xw_common_improvement_fields(task)
         product_improve = self._get_body_field_value_by_name(task, "product_improve")
+        technical_reason = self._get_body_field_value_by_name(task, "technical_reason")
+        process_manage_reason = self._get_body_field_value_by_name(task, "process_manage_reason")
 
         field_value_and_style_list = (
             dts_no_and_styles,  # 问题单号
@@ -275,8 +384,8 @@ class SjExportMissTaskSio(SjXwExportMissTaskSio):
             task.service,  # 应用
             task.product,  # 部门
             task.control_point,  # 问题发生环节（最佳控制点）
-            (task.technical_reason, dict(alignment=ExcelExport.alignment_1)),  # 技术根因
-            (task.process_manage_reason, dict(alignment=ExcelExport.alignment_1)),  # 管理/流程根因
+            (technical_reason, dict(alignment=ExcelExport.alignment_1)),  # 技术根因
+            (process_manage_reason, dict(alignment=ExcelExport.alignment_1)),  # 管理/流程根因
             (improvement_fields.get("security_architecture"), dict(alignment=ExcelExport.alignment_1)),  # 安全架构&方案
             (improvement_fields.get("secure_coding"), dict(alignment=ExcelExport.alignment_1)),  # 安全编码治理
             (improvement_fields.get("open_source_governance"), dict(alignment=ExcelExport.alignment_1)),  # 开源治理
@@ -353,6 +462,8 @@ class XwExportMissTaskSio(SjXwExportMissTaskSio):
         security_measures = self._get_body_field_value_by_name(task, "security_measures")
         compliance_policies = self._get_body_field_value_by_name(task, "compliance_policies")
         product_improve = self._get_body_field_value_by_name(task, "product_improve")
+        technical_reason = self._get_body_field_value_by_name(task, "technical_reason")
+        process_manage_reason = self._get_body_field_value_by_name(task, "process_manage_reason")
 
         logger.info("%s", f"task.dts_create_time: {task.dts_create_time}")
         field_value_and_style_list = (
@@ -366,8 +477,8 @@ class XwExportMissTaskSio(SjXwExportMissTaskSio):
             task.service,  # 应用
             task.product,  # 部门
             task.control_point,  # 问题发生环节（最佳控制点）
-            (task.technical_reason, dict(alignment=ExcelExport.alignment_1)),  # 技术根因
-            (task.process_manage_reason, dict(alignment=ExcelExport.alignment_1)),  # 管理/流程根因
+            (technical_reason, dict(alignment=ExcelExport.alignment_1)),  # 技术根因
+            (process_manage_reason, dict(alignment=ExcelExport.alignment_1)),  # 管理/流程根因
             (improvement_fields.get("security_architecture"), dict(alignment=ExcelExport.alignment_1)),  # 安全架构&方案
             (improvement_fields.get("secure_coding"), dict(alignment=ExcelExport.alignment_1)),  # 安全编码治理
             (improvement_fields.get("open_source_governance"), dict(alignment=ExcelExport.alignment_1)),  # 开源治理
@@ -449,247 +560,3 @@ def xw_export_misstask_sio(tasks):
                                        "alignment": ExcelExport.alignment_2,
                                    })
     return exporter.execute()
-
-
-# -------------------------------------------------------------------------------------------------------------------- #
-def new_icsl_export_misstask_sio(tasks):
-    return sj_export_misstask_sio(tasks)
-
-
-def new_it_icsl_export_misstask_sio(tasks):
-    return xw_export_misstask_sio(tasks)
-
-
-# -------------------------------------------------------------------------------------------------------------------- #
-def _set_one_header_table_row(field_value_and_style_list, excel_parameters: SimpleNamespace):
-    sheet = excel_parameters.sheet
-    row = excel_parameters.row
-    col_num_list = excel_parameters.col_num_list
-
-    for index, value_or_tuple in enumerate(field_value_and_style_list):
-        if isinstance(value_or_tuple, tuple):
-            value = value_or_tuple[0]
-            styles = value_or_tuple[1]
-        else:
-            value = value_or_tuple
-            styles = {}
-
-        column = index + 1
-        ExcelExport.set_value_style(
-            cell=sheet.cell(row + 2, column),
-            value=value,
-            **styles
-        )
-        ExcelExport.record_max_col(col_num_list, value, index)
-
-
-def _duplicate_lines_return_sio(ws, sheet, col_num_list):
-    # 2024-09-19：这里的代码主要为了解决重复代码的问题，是暂时的，命名也不合理！
-
-    # 设置自适应列宽
-    for i in range(0, len(col_num_list)):
-        width = col_num_list[i] if col_num_list[i] <= 80 else 80  # 设置最大长度
-        sheet.column_dimensions[ExcelExport.get_col_num_dict().get(i)].width = (width + 5)
-
-    # 冻结首行和首列
-    sheet.freeze_panes = "B2"
-
-    sio = BytesIO()
-    ws.save(sio)
-    sio.seek(0)
-
-    return sio
-
-
-def earlywarning_export_sio(tasks):
-    """安全遗留问题--预警函问题导出"""
-    headers = ["问题id", "遗留问题描述", "归属预警函", "预警来源", "启动时间", "计划解决时间", "实际解决时间",
-               "当前状态", "责任人", "创建时间", "修改时间"]
-    # 创建工作薄
-    ws = openpyxl.Workbook()
-    # 获得当前活跃的工作页，默认为第一个工作页
-    sheet = ws.active
-    # 设置风格
-    sheet.font = ExcelExport.font
-    sheet.border = ExcelExport.border
-    sheet.alignment = ExcelExport.alignment_2
-
-    for i, v in enumerate(headers):
-        ExcelExport.set_value_style(
-            cell=sheet.cell(1, i + 1),
-            value=v,
-            font=ExcelExport.header_font,
-            fill=ExcelExport.fill_1,
-
-        )
-    # 设置首行行高
-    sheet.row_dimensions[1].height = 35
-    col_num_list = [len(str(x).encode('gb18030')) for x in headers]  # 记录每列的最大宽度
-    for row, legacy in enumerate(tasks):
-        # 设置行高
-        sheet.row_dimensions[row + 2].height = 25
-
-        executor = "\n".join(ast.literal_eval(legacy.executor))
-
-        field_value_and_style_list = [
-            legacy.id,  # 问题 id
-            legacy.description,  # 遗留问题描述
-            legacy.owner,  # 归属预警函
-            legacy.origin,  # 预警来源
-            legacy.start_time,  # 启动时间
-            legacy.plan_time,  # 计划解决时间
-            legacy.resolve_time,  # 实际解决时间
-            legacy.status,  # 当前状态
-            executor,  # 责任人
-            legacy.create_time.strftime('%Y-%m-%d'),  # 问题创建时间
-            legacy.update_time.strftime('%Y-%m-%d'),  # 问题更新时间
-        ]
-
-        _set_one_header_table_row(field_value_and_style_list,
-                                  SimpleNamespace(sheet=sheet, row=row, col_num_list=col_num_list))
-
-    return _duplicate_lines_return_sio(ws, sheet, col_num_list)
-
-
-def exception_export_sio(tasks):
-    """安全遗留问题---例外报备问题导出"""
-    headers = ["问题id", "遗留问题描述", "进展描述", "预警来源", "启动时间", "计划解决时间", "实际解决时间",
-               "当前状态", "归属部门", "部门主管", "责任人", "创建时间", "修改时间"]
-    # 创建工作薄
-    ws = openpyxl.Workbook()
-    # 获得当前活跃的工作页，默认为第一个工作页
-    sheet = ws.active
-    # 设置风格
-    sheet.font = ExcelExport.font
-    sheet.border = ExcelExport.border
-    sheet.alignment = ExcelExport.alignment_2
-
-    for i, v in enumerate(headers):
-        ExcelExport.set_value_style(
-            cell=sheet.cell(1, i + 1),
-            value=v,
-            font=ExcelExport.header_font,
-            fill=ExcelExport.fill_1,
-        )
-    # 设置首行行高
-    sheet.row_dimensions[1].height = 35
-    col_num_list = [len(str(x).encode('gb18030')) for x in headers]  # 记录每列的最大宽度
-    for row, legacy in enumerate(tasks):
-        # 设置行高
-        sheet.row_dimensions[row + 2].height = 25
-
-        product = "\r\n".join(legacy.product) if legacy.product else ""
-        department_head = "\r\n".join(legacy.department_head) if legacy.department_head else ""
-        executor = "\n".join(ast.literal_eval(legacy.executor))
-
-        field_value_and_style_list = [
-            legacy.id,  # 问题 id
-            legacy.description,  # 遗留问题描述
-            legacy.progress,  # 进展描述
-            legacy.origin,  # 预警来源
-            legacy.start_time,  # 启动时间
-            legacy.plan_time,  # 计划解决时间
-            legacy.resolve_time,  # 实际解决时间
-            legacy.status,  # 当前状态
-            (product, dict(alignment=ExcelExport.alignment_5)),  # 归属部门
-            (department_head, dict(alignment=ExcelExport.alignment_5)),  # 部门主管
-            (executor, dict(alignment=ExcelExport.alignment_5)),  # 责任人
-            legacy.create_time.strftime('%Y-%m-%d'),  # 问题创建时间
-            legacy.update_time.strftime('%Y-%m-%d'),  # 问题更新时间
-        ]
-
-        _set_one_header_table_row(field_value_and_style_list,
-                                  SimpleNamespace(sheet=sheet, row=row, col_num_list=col_num_list))
-
-    return _duplicate_lines_return_sio(ws, sheet, col_num_list)
-
-
-def eflow_reject_export_sio(tasks):
-    """送检驳回记录表导出"""
-    headers = ["电子流id", "产品所属PDU", "产品版本", "转测时间", "版本打回原因", "版本打回时间", "产品责任人",
-               "驳回类型"]
-    # 创建工作薄
-    ws = openpyxl.Workbook()
-    # 获得当前活跃的工作页，默认为第一个工作页
-    sheet = ws.active
-    # 设置风格
-    sheet.font = ExcelExport.font
-    sheet.border = ExcelExport.border
-    sheet.alignment = ExcelExport.alignment
-
-    for i, v in enumerate(headers):
-        ExcelExport.set_value_style(
-            cell=sheet.cell(1, i + 1),
-            value=v,
-            font=ExcelExport.header_font,
-            fill=ExcelExport.fill_1,
-
-        )
-    # 设置首行行高
-    sheet.row_dimensions[1].height = 35
-    col_num_list = [len(str(x).encode('gb18030')) for x in headers]  # 记录每列的最大宽度
-    for row, reject in enumerate(tasks):
-        # 设置行高
-        sheet.row_dimensions[row + 2].height = 25
-
-        field_values = [
-            reject.eflow_id,  # id
-            reject.eflow.product,  # 产品所属 PDU
-            reject.eflow.version,  # 产品版本
-            reject.eflow.create_time.strftime('%Y-%m-%d'),  # 转测时间
-            reject.conclusion,  # 版本打回原因
-            reject.create_time.strftime('%Y-%m-%d'),  # 版本打回时间
-            reject.eflow.creator,  # 产品责任人
-            reject.reject_type,  # 驳回类型
-        ]
-
-        _set_one_header_table_row(field_values, SimpleNamespace(sheet=sheet, row=row, col_num_list=col_num_list))
-
-    return _duplicate_lines_return_sio(ws, sheet, col_num_list)
-
-
-def get_design_baseline_sio(tasks):
-    """安全设计基线导出"""
-    headers = ["任务id", "产品", "子产品", "服务", "版本", "产品负责人", "创建时间", "实际A类满足度", "实际红线满足度",
-               "A类满足度",
-               "红线满足度"]
-    # 创建工作薄
-    ws = openpyxl.Workbook()
-    # 获得当前活跃的工作页，默认为第一个工作页
-    sheet = ws.active
-    # 设置风格
-    sheet.font = ExcelExport.font
-    sheet.border = ExcelExport.border
-    sheet.alignment = ExcelExport.alignment_2
-
-    for i, v in enumerate(headers):
-        ExcelExport.set_value_style(
-            cell=sheet.cell(1, i + 1),
-            value=v,
-            font=ExcelExport.header_font,
-            fill=ExcelExport.fill_1,
-
-        )
-    # 设置首行行高
-    sheet.row_dimensions[1].height = 35
-    col_num_list = [len(str(x).encode('gb18030')) for x in headers]  # 记录每列的最大宽度
-    for row, task in enumerate(tasks):
-        # 设置行高
-        sheet.row_dimensions[row + 2].height = 25
-
-        field_values = [
-            task.id,  # id
-            task.product,  # 产品
-            task.subproduct,  # 子产品
-            task.service,  # 应用/服务
-            task.version,  # 版本
-            task.create_user,  # 产品负责人
-            task.create_time,  # 创建时间
-            task.actual_satisfaction_A,  # 实际A类满足度
-            task.actual_satisfaction_red,  # 实际红线满足度
-            task.satisfaction_A,  # A类满足度
-            task.satisfaction_red,  # 红线满足度
-        ]
-        _set_one_header_table_row(field_values, SimpleNamespace(sheet=sheet, row=row, col_num_list=col_num_list))
-
-    return _duplicate_lines_return_sio(ws, sheet, col_num_list)
