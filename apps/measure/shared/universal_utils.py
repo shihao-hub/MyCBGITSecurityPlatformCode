@@ -16,10 +16,12 @@ T = TypeVar("T")
 
 logger = logging.getLogger("mylogger")
 
+JAVA_DATE_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+
 
 def get_last_month_begin_and_end():
     """ 获得上个月的起始，ISO 格式 """
-    java_date_format = "%Y-%m-%dT%H:%M:%S.%fZ"
+    java_date_format = JAVA_DATE_FORMAT
 
     # 获取上个月的月初和月末，这个相对有点小麻烦吧？但是我为什么觉得本不该这样麻烦呢？（2024-09-24）
     # #(C)!: today = pytz.timezone("Asia/Shanghai").localize(timezone.now())
@@ -85,8 +87,8 @@ def validate_assumption(expr, msg=None):
     # 不理解 AssertionError 的意义，还是用我遵循的原则吧：及时出错，哪里还区分什么测试环境、正式环境
     # assert 的作用我觉得需要 程序员的技术能力强 + 测试人员的技术能力强 时才有所体现
     if not expr:
-        raise RuntimeError(f"表达式不为真{(' -> ' + msg) if msg else ''}"
-                           f"\n{traceback.format_exc()}")
+        raise CustomException(f"表达式不为真{(' -> ' + msg) if msg else ''}"
+                              f"\n{traceback.format_exc()}")
 
 
 def get_namedtuple_keys(inst) -> tuple:
