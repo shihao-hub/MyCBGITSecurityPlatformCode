@@ -4,13 +4,17 @@ from typing import TypeVar, Generic, Type
 import mongoengine
 from mongoengine import (
     StringField, BooleanField,
+    ListField, DictField,
     DateTimeField,
     DynamicDocument,
 )
 
+from django.conf import settings
+
 from asset.models import ServicePbiEamapMapping, PBIInfo
 from config import config
 from utils.get_w3_account import get_cn_name as get_cn_name_of_platform
+from gytask.utils.edm_api import Edm
 
 DATABASE_NAME = "combat_platform"
 mongoengine.connect(db=DATABASE_NAME, alias=DATABASE_NAME,
@@ -128,7 +132,7 @@ class DesktopVulnerability(DynamicDocument):
 class VulnerabilityTrackingTask(DynamicDocument):
     tracingTaskId = StringField(verbose_name="跟踪任务编号", required=True, primary_key=True)
     vulnerabilityId = StringField(verbose_name="漏洞编号", required=True)
-    tracingTaskName = StringField(verbose_name="任务名称", required=True) # 注意，这个任务名称就是问题描述！
+    tracingTaskName = StringField(verbose_name="任务名称", required=True)  # 注意，这个任务名称就是问题描述！
     vulnerabilityDescription = StringField(verbose_name="描述", required=True)
     vulnerabilityCategory = StringField(verbose_name="漏洞类别", required=True)
     productCode = StringField(verbose_name="产品/子产品/应用", required=True)
@@ -136,6 +140,10 @@ class VulnerabilityTrackingTask(DynamicDocument):
     handler = StringField(verbose_name="处理人/团队")
     discoverer = StringField(verbose_name="发现人/团队")
     approver = StringField(verbose_name="approver")
+
+    # 结构类似 [{},{}]，其中字典为 {"docId":"","name":""}
+    analysisAttachments = ListField(verbose_name="分析报告")
+    responseSolutionsAttachments = ListField(verbose_name="处理报告")
 
     handlingLevel = StringField(verbose_name="处理级别", required=True)
     # generated fields
@@ -161,6 +169,25 @@ class VulnerabilityTrackingTask(DynamicDocument):
     }
 
     objects: mongoengine.QuerySet
+
+    def _convert_analysis_and_response_solutions_attachments(self):
+        def _convert(field_name):
+            try:
+                attachments = getattr(self, field_name)
+                if not attachments:
+                    return
+                res = []
+                for d in attachments:
+                    appid = settings.APPID
+                    url = Edm().get_download_url(settings.env).format(project_id=appid, doc_id=d.get("docId"))
+                    res.append(f'<a href="{url}">{d.get("name")}</a>')
+                setattr(self, field_name, "\n".join(res))
+            except Exception as e:
+                # 2024-10-18：由于目前没有数据测试，因此 try except 保证不出错比较重要
+                logger.error("%s", f"{e}")
+
+        _convert("analysisAttachments")
+        _convert("responseSolutionsAttachments")
 
     def _convert_name_of_person(self):
         for field in ["handler", "discoverer", "approver"]:
@@ -201,3 +228,5 @@ class VulnerabilityTrackingTask(DynamicDocument):
 
         self._convert_vulnerability_severity()
         self._convert_vulnerability_category()
+
+        self._convert_analysis_and_response_solutions_attachments()
