@@ -16,9 +16,9 @@ class PasswordEncrypter:
     def encrypt(self, text: str):
         """ 生成密文 """
         # 初始化加密器
-        aes = AES.new(add_to_16(self._key), AES.MODE_ECB)
+        aes = AES.new(self.add_to_16(self._key), AES.MODE_ECB)
         # 进行 aes 加密
-        encrypt_aes = aes.encrypt(add_to_16(text))
+        encrypt_aes = aes.encrypt(self.add_to_16(text))
         # 用 base64 转成字符串形式
         encrypted_text = str(base64.encodebytes(encrypt_aes), encoding="utf-8")
         # 加密后的字符串会被添加换行符...
@@ -28,7 +28,7 @@ class PasswordEncrypter:
     def decrypt(self, ciphertext: str):
         """ 解开密文 """
         # 初始化加密器
-        aes = AES.new(add_to_16(self._key), AES.MODE_ECB)
+        aes = AES.new(self.add_to_16(self._key), AES.MODE_ECB)
         # 逆向解密 base64 成 bytes
         base64_decrypted = base64.decodebytes(ciphertext.encode(encoding="utf-8"))
         # 执行解密密并转码返回 str
