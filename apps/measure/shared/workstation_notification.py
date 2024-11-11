@@ -72,11 +72,7 @@ class NotificationManager:
         return _notification_manager
 
     @classmethod
-    def get_jump_url(cls, context=None):
-        if context is None:
-            context = {}
-        row_data = urllib.parse.quote(json.dumps(context))
-        query = f"?rowData={row_data}"
+    def get_jump_url(cls, query=""):
         jump_url = ("https://"
                     + cls.get_domain()
                     + f"/commonSecurity/reImprove/reImproveManage"
@@ -139,16 +135,21 @@ class NotificationManager:
         content = (f"尊敬的安全测试平台用户，您好：\n"
                    f"       您已被指定为逆向改进问题 {context.get('dts_no')} 的测试经理，请点击前往安全测试平台。")
 
-        self._notify(user_list, title, content, jump_url=self.get_jump_url(context=context))
+        row_data = urllib.parse.quote(json.dumps({
+            **{
+                k: v
+                for k, v in context.items()
+                if k in ["control_point", "description", "dts_no", "id", "level", "task_type", "yn_common", ]},
+        }))
+        self._notify(user_list, title, content, jump_url=self.get_jump_url(query=f"?rowData={row_data}"))
+
+    def notify_when_reform_executor_modified(self, user_list: List, context: Dict):
+        """ 改进措施责任人修改后，发应用号给改进措施责任人 """
+        return self._notify_improve_common(user_list, context)
 
     def notify_when_analysis_completed_and_confirmed(self, user_list: List, context: Dict):
         """ 分析完成+确认状态已确认后，发应用号给改进措施责任人 """
-        title = f"逆向改进通知"
-
-        content = (f"尊敬的安全测试平台用户，您好：\n"
-                   f"       您有一个逆向改进问题 {context.get('dts_no')} 的改进措施待处理，请点击前往安全测试平台。")
-
-        self._notify(user_list, title, content, jump_url=self.get_jump_url())
+        return self._notify_improve_common(user_list, context)
 
     def notify_closed_loop_when_completed(self, user_list: List, context: Dict):
         """ 闭环完，给验收责任人发应用号 """
@@ -157,7 +158,14 @@ class NotificationManager:
         content = (f"尊敬的安全测试平台用户，您好：\n"
                    f"       您有一个逆向改进问题 {context.get('dts_no')} 待验收，请点击前往安全测试平台。")
 
-        self._notify(user_list, title, content, jump_url=self.get_jump_url())
+        row_data = urllib.parse.quote(json.dumps({
+            **{
+                k: v for k, v in context.items()
+                if k in ["control_point", "description", "dts_no", "id", "level", "task_type", "yn_common", ]
+            },
+            "tab_type": 1
+        }))
+        self._notify(user_list, title, content, jump_url=self.get_jump_url(query=f"?rowData={row_data}"))
 
     def notify_periodically_before_closed_loop_plan(self):
         """ 闭环计划前的 1天，3天，7天自动给改进措施责任人发应用号提醒 """
@@ -177,7 +185,38 @@ class NotificationManager:
                             close_plan_time=inst.close_plan_time,
                             interval_day=interval_day,
                         ))
-                        self._notify([inst.reform_executor], title, content, jump_url=self.get_jump_url())
+
+                        detail_inst = inst.get_misstaskdetail_obj()
+                        row_data = urllib.parse.quote(json.dumps({
+                            "control_point": detail_inst.control_point,
+                            "description": detail_inst.description,
+                            "dts_no": detail_inst.dts_no,
+                            "id": detail_inst.id,
+                            "level": detail_inst.level,
+                            "task_type": detail_inst.misstask.task_type,
+                            "yn_common": detail_inst.yn_common,
+
+                            "tab_type": 0
+                        }))
+                        query = f"?rowData={row_data}"
+                        self._notify([inst.reform_executor], title, content, jump_url=self.get_jump_url(query=query))
                 logger.info("%s", f"【闭环计划前自动给改进措施责任人发应用号提醒】【{interval_day}-{count}】")
         except Exception as e:
             raise CustomException(f"{e}\n{traceback.format_exc()}") from e
+
+    def _notify_improve_common(self, user_list: List, context: Dict):
+        """ 改进页面通用应用号通知 """
+        title = self._get_common_title()
+
+        content = (f"尊敬的安全测试平台用户，您好：\n"
+                   f"       您有一个逆向改进问题 {context.get('dts_no')} 的改进措施待处理，请点击前往安全测试平台。")
+
+        row_data = urllib.parse.quote(json.dumps({
+            **{
+                k: v
+                for k, v in context.items()
+                if k in ["control_point", "description", "dts_no", "id", "level", "task_type", "yn_common", ]
+            },
+            "tab_type": 0  # 2024-10-23：与前端约定，tab_type = 0 是待改进页面，tab_type = 1 是待验收页面
+        }))
+        self._notify(user_list, title, content, jump_url=self.get_jump_url(query=f"?rowData={row_data}"))
