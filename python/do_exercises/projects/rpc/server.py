@@ -81,8 +81,9 @@ class RPCServer:
                 res = self._call(data.get("name"), data.get("args"), data.get("kwargs"))
                 client_socket.sendall(common.generate_success_response_data(data=res))
             except Exception as e:
-                msg = f"调用 {data.get('name')} 函数发生错误，原因：{e}"
-                client_socket.sendall(common.generate_error_response_data(msg=msg))
+                msg = f"调用 {data.get('name')} 函数发生错误"
+                reason = f"{e}"
+                client_socket.sendall(common.generate_error_response_data(msg=msg, reason=reason))
                 raise
         except Exception as e:
             RPCServer.logger_error(f"{e}\n{traceback.format_exc()}")
