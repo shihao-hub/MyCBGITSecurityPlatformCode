@@ -2,6 +2,7 @@ import base64
 from typing import Optional
 
 from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 
 
 class CryptoHelper:
@@ -10,9 +11,10 @@ class CryptoHelper:
     SECRET_KEY = "m2yb!j1u(o=7_!@-7ky9fbs+$=!t%l5s@tm)(i(-$11ylqr1r0"
 
     @staticmethod
-    def add_to_16(value):
+    def add_to_16(value: str):
         """ str 不是 16 的倍数那就补足为 16 的倍数 """
         # 2024-11-12：注意事项，此处用的是 Zero 填充，可能会导致解密后的内容多出空格
+        # 2024-11-12 晚，已经改为 PKCS#7 填充
 
         # 在使用对称加密算法（如AES）时，通常需要将明文填充到特定的块大小（例如16字节）。
         # 如果你的明文长度不是16的倍数，常用的做法是使用填充（padding）技术来确保其长度符合要求。
@@ -26,9 +28,13 @@ class CryptoHelper:
         # 在解密时，你需要根据你使用的填充方式去除这些填充字节。
         # 例如，如果使用PKCS#7填充，你可以检查最后一个字节的值，确定有多少字节需要被去除。
 
-        while len(value) % 16 != 0:
-            value += '\0'
-        return str.encode(value)
+        # 2024-11-12：此处之前用的是 len(value)，这是不对的，处理字节显然应当转为字节后在处理。毕竟字符不止 ascii 码。
+        res = str.encode(value)
+        remainder = len(res) % 16
+        if remainder != 0:
+            padding_len = 16 - remainder
+            res += bytes([padding_len]) * padding_len
+        return res
 
     def __init__(self, cipher_key: Optional[str] = None, encoding="utf-8"):
         self._cls = type(self)
@@ -51,9 +57,12 @@ class CryptoHelper:
     def decrypt(self, ciphertext: str):
         """ 解开密文 """
         decode_by_base64: bytes = base64.decodebytes(ciphertext.encode(encoding=self._encoding))
-        decrypted_text_by_aes: bytes = self._aes.decrypt(decode_by_base64)
 
-        res: str = decrypted_text_by_aes.decode(encoding="utf-8")
+        decrypted_text_by_aes: bytes = self._aes.decrypt(decode_by_base64)
+        padding_len = int(decrypted_text_by_aes[-1])
+        decrypted_text_by_aes = decrypted_text_by_aes[:-padding_len]
+
+        res: str = decrypted_text_by_aes.decode(encoding=self._encoding)
         return res
 
 
