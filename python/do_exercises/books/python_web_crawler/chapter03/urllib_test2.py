@@ -2,8 +2,8 @@ from urllib.request import HTTPPasswordMgrWithDefaultRealm, HTTPBasicAuthHandler
 from urllib.error import URLError, HTTPError
 
 config = {
-    "username": "ZWX1333091",
-    "password": "Zsh20010417.",
+    "username": "Change me",
+    "password": "Change me",
     "url": "https://secevaluation-sit.cbgit.huawei.com/api/gytask/dtses/",
 }
 p_obj = HTTPPasswordMgrWithDefaultRealm()
