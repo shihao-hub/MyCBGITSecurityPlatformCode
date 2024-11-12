@@ -18,10 +18,17 @@ class RPCServer:
         print(f"ERROR: {msg}")
 
     @staticmethod
-    def create_server_socket():
+    def create_server_socket(backlog=5):
         server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         server_socket.bind(constants.SERVER_ADDRESS)
-        server_socket.listen(1)
+        # backlog: 积压的。
+
+        # backlog 表示在有客户端连接请求到来时，最多可以排队 backlog 个连接请求（不包括已经连接的那个）。
+        # 如果有多于 backlog 的连接请求到达，超出的连接请求会被拒绝，直到队列中有空间。
+
+        # 如果你的应用需要处理多个并发连接，建议将 listen() 的参数设置为更大的值，例如 5 或 10 等。
+        
+        server_socket.listen(backlog)
         return server_socket
 
     @staticmethod
