@@ -41,6 +41,7 @@ class CryptoHelper:
 
     def encrypt(self, text: str):
         """ 生成密文 """
+        # 2024-11-12：中文无法加密，报错提示：Data must be aligned to block boundary in ECB mode
         encrypted_text_by_aes: bytes = self._aes.encrypt(CryptoHelper.add_to_16(text))
         encode_by_base64: bytes = base64.encodebytes(encrypted_text_by_aes)
 
