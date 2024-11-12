@@ -1,61 +1,91 @@
+import contextlib
 import json
 import pprint
 import socket
-from json.decoder import JSONDecodeError
-from typing import Dict
+import traceback
+from typing import Dict, List, Optional
 
-import constants
 import common
+import constants
 
 
-def _check_message(msg: bytes):
-    # 校验消息长度
-    if len(msg) > constants.MAX_MESSAGE_LENGTH:
-        raise BufferError(f"消息长度过长，不可超过 {constants.MAX_MESSAGE_LENGTH} 字节")
+class RPCClient:
+    @staticmethod
+    def logger_info(msg):
+        print(f"客户端 > {msg}")
 
-    # 校验消息格式
-    # try:
-    #     data = json.loads(msg, encoding=constants.ENCODING)
-    #     pprint.pprint(data)
-    # except JSONDecodeError as e:
-    #     raise ValueError("消息的格式必须是 json 格式") from e
+    @staticmethod
+    def logger_error(msg):
+        print(f"ERROR: {msg}")
 
+    @staticmethod
+    @contextlib.contextmanager
+    def create_client_socket():
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect(constants.SERVER_ADDRESS)
+        yield client_socket
+        client_socket.close()
+        RPCClient.logger_info(f"关闭连接")
 
-def send_message(sock: socket.socket, data: Dict):
-    msg = json.dumps(data, ensure_ascii=False)
-    encoded_msg = msg.encode(encoding=constants.ENCODING)
+    @staticmethod
+    def send_data(sock: socket.socket, request_data: Dict):
+        data: str = json.dumps(request_data, ensure_ascii=False)
+        encoded_data = data.encode(encoding=constants.ENCODING)
 
-    _check_message(encoded_msg)
+        # 校验消息长度
+        if len(encoded_data) > constants.MAX_MESSAGE_LENGTH:
+            raise BufferError(f"消息长度过长，不可超过 {constants.MAX_MESSAGE_LENGTH} 字节")
 
-    sock.sendall(encoded_msg)
-    print(f"客户端 > 发送数据成功！")
+        # 校验消息格式
+        # try:
+        #     data = json.loads(encoded_data, encoding=constants.ENCODING)
+        #     pprint.pprint(data)
+        # except JSONDecodeError as e:
+        #     raise ValueError("消息的格式必须是 json 格式") from e
 
+        sock.sendall(encoded_data)
+        RPCClient.logger_info(f"发送数据成功！")
 
-def recv_message(sock: socket.socket) -> Dict:
-    decoded_msg = common.recv_all(sock).decode(encoding=constants.ENCODING)
-    data = json.loads(decoded_msg)
-    return data
+    @staticmethod
+    def recv_data(sock: socket.socket) -> Dict:
+        data: bytes = common.recv_all(sock)
+
+        decoded_data = data.decode(encoding=constants.ENCODING)
+
+        res = json.loads(decoded_data)
+        return res
+
+    @staticmethod
+    def rpc(name="", args: Optional[List] = None, kwargs: Optional[Dict] = None) -> Dict:
+        try:
+            args = args if args else list()
+            kwargs = kwargs if kwargs else dict()
+
+            request_data = dict(name=name, args=args, kwargs=kwargs)
+
+            with RPCClient.create_client_socket() as sock:
+                RPCClient.send_data(sock, request_data)
+                recv_data = RPCClient.recv_data(sock)
+            return recv_data
+        except Exception as e:
+            RPCClient.logger_error(f"{e}\n{traceback.format_exc()}")
+
+    def __init__(self):
+        pass
 
 
 def main():
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect(constants.SERVER_ADDRESS)
+    rpc_client = RPCClient()
 
-    send_data = {
-        "name": "say_hello",
-        "args": [1, 2, 3, "你好"],
+    recv_data = rpc_client.rpc(**{
+        "name": "CryptoHelper_decrypt",
+        "args": ["mgLrYJwzamUM3HgAm9YvYg=="],
         "kwargs": {
 
         }
-    }
-    send_message(client_socket, send_data)
-
-    recv_data = recv_message(client_socket)
+    })
     pprint.pprint(recv_data)
-
-    # client_socket.shutdown(socket.SHUT_RDWR)
-    client_socket.close()
-    print(f"客户端 > 关闭连接")
+    print(recv_data.get("data"))
 
 
 if __name__ == '__main__':
