@@ -1,0 +1,9 @@
+{
+    "owner": "zwx1333091",
+    "plugin_name": "ICSL送检",
+    "help_info": "",
+    "type": "all",
+    "whitelist": {
+    },
+    "region": "g"
+}
