@@ -1,74 +1,116 @@
 import json
 import socket
 import traceback
-from typing import Tuple, Dict, Callable
+from typing import Dict, Callable, List
 
-import constants
 import common
+import constants
+from crypto_helper import CryptoHelper
 
 
-def logger_info(msg):
-    print(f"服务端 > {msg}")
+class RPCServer:
+    @staticmethod
+    def logger_info(msg):
+        print(f"服务端 > {msg}")
 
+    @staticmethod
+    def logger_error(msg):
+        print(f"ERROR: {msg}")
 
-class FunctionManager:
+    @staticmethod
+    def create_server_socket():
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket.bind(constants.SERVER_ADDRESS)
+        server_socket.listen(1)
+        return server_socket
+
+    @staticmethod
+    def recv_data(sock: socket.socket) -> Dict:
+        RPCServer.logger_info(f"开始接收数据")
+
+        data: bytes = common.recv_all(sock)
+        RPCServer.logger_info(f"接收到客户端发来的消息长度为：{len(data)} byte")
+
+        decoded_data: str = data.decode(encoding=constants.ENCODING)
+
+        res = json.loads(decoded_data)
+        # print(res) # json 之 null-None, []-list, {}-dict
+        return res
+
+    class FunctionManager:
+        def __init__(self):
+            self._functions = {}
+
+        def register(self, name: str, fn: Callable):
+            self._functions[name] = fn
+
+        def _check_parameters_for_call(self, args, kwargs):
+            this = self
+            if not isinstance(args, List):
+                raise ValueError("参数类型错误，args 必须是列表类型")
+            if not isinstance(kwargs, Dict):
+                raise ValueError("参数类型错误，kwargs 必须是字典类型")
+
+        def call(self, name, args: List, kwargs: Dict):
+            args = args if args else list()
+            kwargs = kwargs if kwargs else dict()
+
+            self._check_parameters_for_call(args, kwargs)
+
+            fn = self._functions.get(name)
+            if not fn:
+                raise LookupError(f"函数 {name} 未注册！")
+            return fn(*args, **kwargs)
+
     def __init__(self):
-        self._functions = {}
+        self._function_manager = RPCServer.FunctionManager()
 
-    def register(self, name, fn: Callable):
-        self._functions[name] = fn
+    def register_function(self, name: str, fn: Callable):
+        return self._function_manager.register(name, fn)
 
-    def call(self, name, args: Tuple, kwargs: Dict):
-        args = args if args else tuple()
-        kwargs = kwargs if kwargs else dict()
+    def _call(self, name, args: List, kwargs: Dict):
+        return self._function_manager.call(name, args, kwargs)
 
-        fn = self._functions.get(name)
-        if not fn:
-            raise LookupError(f"函数 {name} 未注册！")
-        return fn(*args, **kwargs)
+    def _do_circular_task(self, server_socket):
+        RPCServer.logger_info(f"等待客户端连接")
+
+        client_socket, client_address = server_socket.accept()
+        try:
+            data = self.recv_data(client_socket)
+            try:
+                res = self._call(data.get("name"), data.get("args"), data.get("kwargs"))
+                client_socket.sendall(common.generate_success_response_data(data=res))
+            except Exception as e:
+                msg = f"调用 {data.get('name')} 函数发生错误，原因：{e}"
+                client_socket.sendall(common.generate_error_response_data(msg=msg))
+                raise
+        except Exception as e:
+            RPCServer.logger_error(f"{e}\n{traceback.format_exc()}")
+        finally:
+            client_socket.close()
+
+    def run(self):
+        try:
+            server_socket = type(self).create_server_socket()
+            while True:
+                self._do_circular_task(server_socket)
+                print()
+        except Exception as e:
+            RPCServer.logger_error(f"{e}\n{traceback.format_exc()}")
 
 
-function_manager = FunctionManager()
-
-
-def register_functions():
-    def say_hello(*args, **kwargs):
-        print(f"{args} - {kwargs}")
-
-    function_manager.register("say_hello", say_hello)
+def say_hello(*args, **kwargs):
+    print(f"{args} - {kwargs}")
 
 
 def main():
-    register_functions()
+    rpc_server = RPCServer()
 
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind(constants.SERVER_ADDRESS)
-    server_socket.listen(1)
-    logger_info(f"启动成功")
+    rpc_server.register_function("say_hello", say_hello)
+    rpc_server.register_function("CryptoHelper_encrypt", CryptoHelper().encrypt)
+    rpc_server.register_function("CryptoHelper_decrypt", CryptoHelper().decrypt)
 
-    while True:
-        print()
-        logger_info(f"等待客户端连接")
-        client_socket, client_address = server_socket.accept()
-        try:
-            logger_info(f"开始接收数据")
-            recv_data: bytes = common.recv_all(client_socket)
-
-            logger_info(f"接收到客户端发来的消息长度为：{len(recv_data)} byte")
-
-            decoded_data: str = recv_data.decode(encoding=constants.ENCODING)
-            logger_info(f"接收到的数据：{decoded_data}")
-            data = json.loads(decoded_data)
-
-            res = function_manager.call(data.get("name"), data.get("args"), data.get("kwargs"))
-            logger_info(f"res: {res}")
-            client_socket.sendall(json.dumps({
-                "result": res
-            }).encode(encoding=constants.ENCODING))
-        except Exception as e:
-            print(f"{e}\n{traceback.format_exc()}")
-        finally:
-            client_socket.close()
+    rpc_server.run()
 
 
 if __name__ == '__main__':
