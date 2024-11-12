@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ~ Copyright (c) Huawei Technologies Co., Ltd. 2024-2024. All rights reserved.
+  -->
+
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:aop="http://www.springframework.org/schema/aop"
+       xmlns:jalor="http://www.huawei.com/it/schema/jalor"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       		http://www.springframework.org/schema/aop http://www.springframework.org/schema/aop/spring-aop.xsd
+       		http://www.huawei.com/it/schema/jalor http://www.huawei.com/it/schemas/jalor-beans.xsd">
+    <beans>
+        <aop:config>
+            <aop:advisor advice-ref="auditInterceptor"
+                         pointcut="execution(@com.huawei.it.jalor5.core.log.Audit * com.huawei..*Service.*(..)) or  execution(@com.huawei.it.jalor5.core.log.Audit * com.huawei..*Servlet.*(..))"/>
+        </aop:config>
+
+        <!--强制默认线程通道 -->
+        <jalor:conduits messageType="AuditLog" contextAware="false">
+            <value>defaultConduit</value>
+
+        </jalor:conduits>
+        <jalor:processor messageType="AuditLog" contextAware="false">
+            <ref bean="auditLogProcessor"/>
+        </jalor:processor>
+    </beans>
+</beans>
