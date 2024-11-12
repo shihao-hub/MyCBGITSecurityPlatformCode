@@ -91,6 +91,7 @@ class RPCServer:
             client_socket.close()
 
     def run(self):
+        server_socket = None
         try:
             server_socket = type(self).create_server_socket()
             while True:
@@ -98,6 +99,9 @@ class RPCServer:
                 print()
         except Exception as e:
             RPCServer.logger_error(f"{e}\n{traceback.format_exc()}")
+        finally:
+            if server_socket:
+                server_socket.close()
 
 
 def say_hello(*args, **kwargs):
