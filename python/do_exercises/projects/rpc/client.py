@@ -77,15 +77,25 @@ class RPCClient:
 def main():
     rpc_client = RPCClient()
 
-    recv_data = rpc_client.rpc(**{
-        "name": "CryptoHelper_decrypt",
-        "args": ["mgLrYJwzamUM3HgAm9YvYg=="],
+    pprint.pprint(rpc_client.rpc(**{
+        "name": "CryptoHelper::encrypt",
+        "args": ["张世豪"],
         "kwargs": {
 
         }
-    })
-    pprint.pprint(recv_data)
-    print(recv_data.get("data"))
+    }))
+
+    pprint.pprint(rpc_client.rpc(**{
+        "name": "CryptoHelper::decrypt",
+        "args": ["q/BOepsyasYFR5D2wCRRJA=="],
+        "kwargs": {
+
+        }
+    }))
+
+    pprint.pprint(rpc_client.rpc(**{
+        "name": "rpc_help",
+    }))
 
 
 if __name__ == '__main__':
