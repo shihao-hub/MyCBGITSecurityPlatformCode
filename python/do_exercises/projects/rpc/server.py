@@ -1,3 +1,4 @@
+import functools
 import json
 import socket
 import traceback
@@ -27,7 +28,7 @@ class RPCServer:
         # 如果有多于 backlog 的连接请求到达，超出的连接请求会被拒绝，直到队列中有空间。
 
         # 如果你的应用需要处理多个并发连接，建议将 listen() 的参数设置为更大的值，例如 5 或 10 等。
-        
+
         server_socket.listen(backlog)
         return server_socket
 
@@ -47,6 +48,10 @@ class RPCServer:
     class FunctionManager:
         def __init__(self):
             self._functions = {}
+
+        @property
+        def functions(self) -> Dict:
+            return self._functions
 
         def register(self, name: str, fn: Callable):
             self._functions[name] = fn
@@ -71,6 +76,10 @@ class RPCServer:
 
     def __init__(self):
         self._function_manager = RPCServer.FunctionManager()
+
+    @property
+    def functions(self) -> Dict:
+        return self._function_manager.functions
 
     def register_function(self, name: str, fn: Callable):
         return self._function_manager.register(name, fn)
@@ -115,12 +124,20 @@ def say_hello(*args, **kwargs):
     print(f"{args} - {kwargs}")
 
 
+def rpc_help(rpc_server: RPCServer):
+    functions = rpc_server.functions
+    return {
+        "functions": list(functions.keys())
+    }
+
+
 def main():
     rpc_server = RPCServer()
 
     rpc_server.register_function("say_hello", say_hello)
-    rpc_server.register_function("CryptoHelper_encrypt", CryptoHelper().encrypt)
-    rpc_server.register_function("CryptoHelper_decrypt", CryptoHelper().decrypt)
+    rpc_server.register_function("CryptoHelper::encrypt", CryptoHelper().encrypt)
+    rpc_server.register_function("CryptoHelper::decrypt", CryptoHelper().decrypt)
+    rpc_server.register_function("rpc_help", functools.partial(rpc_help, rpc_server))
 
     rpc_server.run()
 
