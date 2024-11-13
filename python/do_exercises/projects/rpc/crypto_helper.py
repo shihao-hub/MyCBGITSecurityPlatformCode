@@ -2,7 +2,6 @@ import base64
 from typing import Optional
 
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import pad, unpad
 
 
 class CryptoHelper:
